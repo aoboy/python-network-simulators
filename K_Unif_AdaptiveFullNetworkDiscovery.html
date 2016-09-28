@@ -1,0 +1,629 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="Generator" content="Kate, the KDE Advanced Text Editor" />
+<title>K_Unif_AdaptiveFullNetworkDiscovery.py</title>
+</head>
+<body>
+<pre style='color:#1f1c1b;background-color:#ffffff;'>
+<span style='color:#898887;'>#!/usr/bin/env python</span>
+<span style='color:#898887;'># -*- coding: utf-8 -*-</span>
+<span style='color:#898887;'># make a horizontal bar chart</span>
+<span style='color:#898887;'>&quot;&quot;&quot;</span>
+<span style='color:#898887;'>Dept. of Automatic Control</span>
+<span style='color:#898887;'>    School of Electrical Engineering</span>
+<span style='color:#898887;'>        KTH Kungliga Tekniska Högskolan (Royal Institute of Technology)</span>
+<span style='color:#898887;'>Created on Sat Dec 01 10:53:52 PM 2014</span>
+
+<span style='color:#898887;'>@author: gonga</span>
+
+<span style='color:#898887;'>New ideas of accerelating epidemic discovery.</span>
+<span style='color:#898887;'>A frame consists of: (1) a discovery slot, where nodes use multichannel epidemic</span>
+<span style='color:#898887;'>discovery, and (2) listening(announcement) where each node picks a slot to </span>
+<span style='color:#898887;'>listen for a specific neighbor it has not yet heard </span>
+<span style='color:#898887;'>&quot;&quot;&quot;</span>
+
+<span style='color:#924c9d;'>import</span> matplotlib <span style='color:#924c9d;'>as</span> mpl
+<span style='color:#924c9d;'>import</span> matplotlib.pyplot  <span style='color:#924c9d;'>as</span> plt
+<span style='color:#924c9d;'>from</span> pylab <span style='color:#924c9d;'>import</span> <b>*</b>
+
+<span style='color:#924c9d;'>import</span> math
+<span style='color:#924c9d;'>import</span> numpy <span style='color:#924c9d;'>as</span> np
+<span style='color:#924c9d;'>from</span> numpy <span style='color:#924c9d;'>import</span> mean
+<span style='color:#924c9d;'>from</span> scipy <span style='color:#924c9d;'>import</span> stats
+<span style='color:#924c9d;'>import</span> scipy <span style='color:#924c9d;'>as</span> sp
+
+
+<span style='color:#924c9d;'>from</span> matplotlib <span style='color:#924c9d;'>import</span> rc
+plt.rcParams[<span style='color:#bf0303;'>'ps.useafm'</span>] <b>=</b> <span style='color:#006e28;'>True</span>
+<span style='color:#898887;'>#rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})</span>
+<span style='color:#898887;'>#plt.rcParams['pdf.fonttype'] = 3 #[42 or 3]</span>
+prop <b>=</b> matplotlib.font_manager.FontProperties(size<b>=</b><span style='color:#b08000;'>8</span>)
+
+
+simSeed<b>=</b> <span style='color:#b08000;'>997</span>
+snapShotCounter<b>=</b><span style='color:#b08000;'>0</span>
+rsObj <b>=</b> np.random.mtrand.RandomState(simSeed)
+
+<b>class</b> Node:
+    <b>def</b> <b><span style='color:#000e52;'>__init__</span></b>(<span style='color:#006e28;'>self</span>, <b><span style='color:#f70349;'>id</span></b>, avgNodeDegree):
+      <span style='color:#006e28;'>self</span>.<b><span style='color:#f70349;'>id</span></b> <b>=</b> <b><span style='color:#f70349;'>id</span></b>  
+      <span style='color:#006e28;'>self</span>.neighLen <b>=</b> avgNodeDegree
+      <span style='color:#006e28;'>self</span>.chId <b>=</b> <span style='color:#b08000;'>0</span>
+    
+      <span style='color:#006e28;'>self</span>.ownSlot <b>=</b> <span style='color:#006e28;'>None</span>
+      <span style='color:#006e28;'>self</span>.ownChannel <b>=</b><span style='color:#006e28;'>None</span>
+     
+      <span style='color:#006e28;'>self</span>.state <b>=</b> <span style='color:#006e28;'>False</span>
+      <span style='color:#006e28;'>self</span>.networkVec   <b>=</b> []
+      <span style='color:#006e28;'>self</span>.notKnownNeigh<b>=</b>[]
+      <span style='color:#006e28;'>self</span>.neighbors  <b>=</b> []
+      <span style='color:#006e28;'>self</span>.neighbors1Hop <b>=</b> []
+      
+      <span style='color:#006e28;'>self</span>.xc0 <b>=</b> <span style='color:#b08000;'>0</span>
+      <span style='color:#006e28;'>self</span>.yc0 <b>=</b> <span style='color:#b08000;'>0</span>
+      <span style='color:#006e28;'>self</span>.hopCount    <b>=</b> <span style='color:#b08000;'>0</span>
+      <span style='color:#006e28;'>self</span>.radioRadius <b>=</b> <span style='color:#b08000;'>25</span>
+      <span style='color:#006e28;'>self</span>.Ptrans <b>=</b> <span style='color:#b08000;'>0.1</span>
+      <span style='color:#898887;'>'''</span><span style='color:#898887;'>Const related when a node starts discovery..</span><span style='color:#898887;'>'''</span>
+      <span style='color:#006e28;'>self</span>.active <b>=</b> <span style='color:#006e28;'>False</span> 
+      <span style='color:#898887;'>'''</span><span style='color:#898887;'>Generate a random number between 0 and 200.</span><span style='color:#898887;'>'''</span>
+      <span style='color:#006e28;'>self</span>.startTime <b>=</b> <span style='color:#b08000;'>0</span>
+      
+      <span style='color:#006e28;'>self</span>.Phase_i <b>=</b> <span style='color:#b08000;'>1</span>
+      <span style='color:#006e28;'>self</span>.adptTxP <b>=</b> <span style='color:#b08000;'>1.</span><b>/</b><span style='color:#b08000;'>2.</span>
+      <span style='color:#006e28;'>self</span>.adaptNumNeighbors <b>=</b> <span style='color:#b08000;'>2</span><b>**</b><span style='color:#006e28;'>self</span>.Phase_i
+      <span style='color:#006e28;'>self</span>.phaseLenght <b>=</b> <span style='color:#b08000;'>2</span><b>*</b><span style='color:#006e28;'>self</span>.Phase_i<b>*</b><span style='color:#b08000;'>2</span><b>**</b><span style='color:#006e28;'>self</span>.Phase_i
+
+      <span style='color:#006e28;'>self</span>.networkVec.append(<span style='color:#006e28;'>self</span>) 
+      
+    <b>def</b> updateParameters(<span style='color:#006e28;'>self</span>, simTime):
+        
+        <b>if</b> simTime <b>!=</b> <span style='color:#b08000;'>0</span> <b>and</b> simTime<b>%</b><span style='color:#006e28;'>self</span>.phaseLenght <b>==</b> <span style='color:#b08000;'>0</span>:
+            
+            <span style='color:#006e28;'>self</span>.Phase_i <b>=</b> <span style='color:#006e28;'>self</span>.Phase_i <b>+</b> <span style='color:#b08000;'>1</span>
+            
+            newWindow <b>=</b> <span style='color:#b08000;'>2</span><b>*</b><span style='color:#006e28;'>self</span>.Phase_i<b>*</b><span style='color:#b08000;'>2</span><b>**</b><span style='color:#006e28;'>self</span>.Phase_i
+            
+            <span style='color:#006e28;'>self</span>.phaseLenght <b>=</b> <span style='color:#006e28;'>self</span>.phaseLenght <b>+</b> newWindow
+                        
+            <span style='color:#006e28;'>self</span>.adaptNumNeighbors <b>=</b> <span style='color:#b08000;'>2</span><b>**</b><span style='color:#006e28;'>self</span>.Phase_i
+            
+            <span style='color:#006e28;'>self</span>.adptTxP <b>=</b> <span style='color:#b08000;'>1.</span><b>/</b><span style='color:#006e28;'>self</span>.adaptNumNeighbors
+        
+    
+    <b>def</b> addCoordinates(<span style='color:#006e28;'>self</span>, x, y):
+       <span style='color:#006e28;'>self</span>.xc0 <b>=</b> x
+       <span style='color:#006e28;'>self</span>.yc0 <b>=</b> y
+       
+    <b>def</b> isNeighbor(<span style='color:#006e28;'>self</span>, nodeXY):
+       
+       <b>if</b> nodeXY.<b><span style='color:#f70349;'>id</span></b> <b>!=</b> <span style='color:#006e28;'>self</span>.<b><span style='color:#f70349;'>id</span></b>:
+         d <b>=</b> math.sqrt( (nodeXY.xc0<b>-</b><span style='color:#006e28;'>self</span>.xc0)<b>**</b><span style='color:#b08000;'>2</span> <b>+</b> (nodeXY.yc0 <b>-</b><span style='color:#006e28;'>self</span>.yc0)<b>**</b><span style='color:#b08000;'>2</span> )
+       
+         <b>if</b> d <b>&lt;</b> <span style='color:#006e28;'>self</span>.radioRadius:
+               <b>return</b> <span style='color:#006e28;'>True</span>
+               
+       <b>return</b> <span style='color:#006e28;'>False</span>
+       
+    <b>def</b> isNeighborByID(<span style='color:#006e28;'>self</span>, nID):
+        <b>if</b> <span style='color:#006e28;'>self</span>.<b><span style='color:#f70349;'>id</span></b> <b>!=</b> nID <b>and</b> nID <b>in</b> <span style='color:#006e28;'>self</span>.neighbors:
+            <b>return</b> <span style='color:#006e28;'>True</span>
+        <b>return</b> <span style='color:#006e28;'>False</span>
+    
+    <b>def</b> flushNeighbors(<span style='color:#006e28;'>self</span>):
+       <span style='color:#898887;'>'''</span><span style='color:#898887;'>'''</span>
+       <span style='color:#006e28;'>self</span>.networkVec    <b>=</b> []    
+       <span style='color:#006e28;'>self</span>.notKnownNeigh <b>=</b> []
+       <span style='color:#006e28;'>self</span>.neighbors1Hop <b>=</b> []
+       
+       <span style='color:#006e28;'>self</span>.networkVec.append(<span style='color:#006e28;'>self</span>) 
+
+    <b>def</b> addReceived(<span style='color:#006e28;'>self</span>, node):
+        <b>if</b> node <b>not</b> <b>in</b> <span style='color:#006e28;'>self</span>.networkVec:
+            <span style='color:#006e28;'>self</span>.networkVec.append(node)  
+        <b>else</b>:
+            idx <b>=</b> <span style='color:#006e28;'>self</span>.networkVec.index(node) 
+            hop <b>=</b> <span style='color:#006e28;'>self</span>.networkVec[idx].hopCount
+            
+            <b>if</b> node.hopCount <b>&lt;</b> hop:
+                <span style='color:#006e28;'>self</span>.networkVec[idx] <b>=</b> node
+
+       
+    <b>def</b> addNeighbor(<span style='color:#006e28;'>self</span>, neighId):
+        <b>if</b> neighId <b>not</b> <b>in</b> <span style='color:#006e28;'>self</span>.neighbors1Hop:
+            <span style='color:#006e28;'>self</span>.neighbors1Hop.append(neighId)
+            
+            <span style='color:#898887;'>'''</span><span style='color:#898887;'>We have discovered the node.. remove it from not Known nodes</span><span style='color:#898887;'>'''</span>
+            <b>if</b> neighId <b>in</b> <span style='color:#006e28;'>self</span>.notKnownNeigh:
+                <span style='color:#006e28;'>self</span>.notKnownNeigh.remove(neighId)
+            
+    <b>def</b> addNotKnown(<span style='color:#006e28;'>self</span>, notID):
+        <b>if</b> notID <b>not</b> <b>in</b> <span style='color:#006e28;'>self</span>.notKnownNeigh:
+            <span style='color:#006e28;'>self</span>.notKnownNeigh.append(notID)
+                  
+    <b>def</b> allNetworkDiscovered(<span style='color:#006e28;'>self</span>):
+        <b>return</b> <b><span style='color:#f70349;'>len</span></b>(<span style='color:#006e28;'>self</span>.networkVec) <b>==</b> <span style='color:#006e28;'>self</span>.neighLen
+                  
+    <b>def</b> allNeighborsDiscovered(<span style='color:#006e28;'>self</span>):
+	 <b>return</b> <b><span style='color:#f70349;'>len</span></b>(<span style='color:#006e28;'>self</span>.neighbors) <b>==</b> <b><span style='color:#f70349;'>len</span></b>(<span style='color:#006e28;'>self</span>.neighbors1Hop)
+  
+    <b>def</b> addChannel(<span style='color:#006e28;'>self</span>, chId):
+        <span style='color:#006e28;'>self</span>.chId <b>=</b> chId
+        
+    <b>def</b> addOwn(<span style='color:#006e28;'>self</span>, channel, ownSlot):
+        
+        <span style='color:#006e28;'>self</span>.ownSlot <b>=</b> ownSlot
+        <span style='color:#006e28;'>self</span>.ownChannel <b>=</b> channel
+        
+    <b>def</b> isOwnSlot(<span style='color:#006e28;'>self</span>, slotOffset):
+        <b>if</b> <span style='color:#006e28;'>self</span>.ownSlot <b>==</b> slotOffset:
+            <b>return</b> <span style='color:#006e28;'>True</span>
+        <b>return</b> <span style='color:#006e28;'>False</span>        
+
+    <b>def</b> selectOwn(<span style='color:#006e28;'>self</span>, pOwn):
+        retV<b>=</b> <span style='color:#006e28;'>False</span>
+        p <b>=</b> rsObj.uniform(<span style='color:#b08000;'>0</span>,<span style='color:#b08000;'>1</span>)
+        <b>if</b> p <b>&lt;</b> pOwn:
+            retV <b>=</b> <span style='color:#006e28;'>True</span>
+        <b>return</b> retV
+        
+    <b>def</b> transmitOwn(<span style='color:#006e28;'>self</span>, ptOwn):
+        
+        <span style='color:#006e28;'>self</span>.state <b>=</b> <span style='color:#006e28;'>False</span>        
+        <span style='color:#006e28;'>self</span>.chId <b>=</b> <span style='color:#006e28;'>self</span>.ownChannel
+                
+        p <b>=</b> rsObj.uniform(<span style='color:#b08000;'>0</span>,<span style='color:#b08000;'>1</span>)
+        
+        pt <b>=</b> <span style='color:#b08000;'>0.5</span>
+        <b>if</b> <b><span style='color:#f70349;'>len</span></b>(<span style='color:#006e28;'>self</span>.neighbors1Hop) <b>!=</b> <span style='color:#b08000;'>0</span>:
+             pt <b>=</b> <span style='color:#b08000;'>1.</span><b>/</b>(<b><span style='color:#f70349;'>len</span></b>(<span style='color:#006e28;'>self</span>.neighbors1Hop) <b>+</b> <span style='color:#b08000;'>1</span>)  
+        <b>else</b>:
+            pt <b>=</b> <span style='color:#b08000;'>0.5</span>
+        
+        <b>if</b> p <b>&lt;</b> pt:<span style='color:#898887;'>#Own:</span>
+            <span style='color:#006e28;'>self</span>.state <b>=</b> <span style='color:#006e28;'>True</span>
+            
+    <b>def</b> transmitAdapt(<span style='color:#006e28;'>self</span>):
+        <span style='color:#006e28;'>self</span>.state <b>=</b> <span style='color:#006e28;'>False</span> 
+        <span style='color:#006e28;'>self</span>.chId <b>=</b> <span style='color:#006e28;'>self</span>.ownChannel
+        
+        p <b>=</b> rsObj.uniform(<span style='color:#b08000;'>0</span>,<span style='color:#b08000;'>1</span>)
+        
+        <b>if</b> p <b>&lt;</b> <span style='color:#006e28;'>self</span>.adptTxP:
+            <span style='color:#006e28;'>self</span>.state <b>=</b> <span style='color:#006e28;'>True</span>
+               
+    <b>def</b> disseminate(<span style='color:#006e28;'>self</span>, node):
+        
+        node.hopCount <b>=</b> <span style='color:#b08000;'>1</span>
+        
+        <b>if</b> node.<b><span style='color:#f70349;'>id</span></b> <b>!=</b> <span style='color:#006e28;'>self</span>.<b><span style='color:#f70349;'>id</span></b>:
+            <span style='color:#006e28;'>self</span>.addNeighbor(node)
+        
+            <span style='color:#898887;'>'''</span><span style='color:#898887;'>Add overheard nodes to list</span><span style='color:#898887;'>'''</span>
+            <b>for</b> nodej <b>in</b> node.networkVec:            
+                
+                <b>if</b> nodej.<b><span style='color:#f70349;'>id</span></b> <b>!=</b> <span style='color:#006e28;'>self</span>.<b><span style='color:#f70349;'>id</span></b>:
+                    nodej.hopCount <b>=</b> nodej.hopCount <b>+</b> <span style='color:#b08000;'>1</span>
+                    hop <b>=</b> nodej.hopCount                
+    
+                    <b>if</b> hop <b>==</b> <span style='color:#b08000;'>2</span>:
+                        <span style='color:#006e28;'>self</span>.addNotKnown(nodej)
+                    
+                    <span style='color:#898887;'>'''</span><span style='color:#898887;'>add to the network table..</span><span style='color:#898887;'>'''</span>
+                    <span style='color:#898887;'>#print 'GGG', self.id, nodej.id</span>
+                    <span style='color:#006e28;'>self</span>.addReceived(nodej)
+
+                
+    <b>def</b> transmit(<span style='color:#006e28;'>self</span>, pt):
+        <span style='color:#006e28;'>self</span>.state <b>=</b> <span style='color:#006e28;'>False</span>
+        p <b>=</b> rsObj.uniform(<span style='color:#b08000;'>0</span>,<span style='color:#b08000;'>1</span>)
+        <b>if</b> p <b>&lt;</b> pt:
+            <span style='color:#006e28;'>self</span>.state <b>=</b> <span style='color:#006e28;'>True</span>  
+    
+    <b>def</b> setReceiver(<span style='color:#006e28;'>self</span>, channel):
+        <span style='color:#006e28;'>self</span>.state <b>=</b> <span style='color:#006e28;'>False</span>
+        <span style='color:#006e28;'>self</span>.chId <b>=</b> channel
+    
+    <b>def</b> receive(<span style='color:#006e28;'>self</span>, pl):
+        p <b>=</b> rsObj.uniform(<span style='color:#b08000;'>0</span>,<span style='color:#b08000;'>1</span>) 
+        
+        <b>if</b> p <b>&gt;</b> pl:
+
+            <b>return</b> <span style='color:#006e28;'>True</span>
+        <b>else</b>:
+            <b>return</b> <span style='color:#006e28;'>False</span>
+            
+    <b>def</b> funcProbOf(C, N):
+        a <b>=</b> N
+        b <b>=</b> <span style='color:#b08000;'>2</span><b>*</b>C<b>+</b>N<b>-</b><span style='color:#b08000;'>1</span>
+        c <b>=</b> C
+        f2 <b>=</b> (b <b>-</b> np.sqrt(math.<b><span style='color:#f70349;'>pow</span></b>(b,<span style='color:#b08000;'>2</span>)<b>-</b><span style='color:#b08000;'>4</span><b>*</b>a<b>*</b>c))<b>/</b>(<span style='color:#b08000;'>1.0</span><b>*</b><span style='color:#b08000;'>2</span><b>*</b>a)
+        <b>return</b> f2    
+
+<b>def</b> confidence_interval(data, confidence<b>=</b><span style='color:#b08000;'>0.95</span>):
+    a <b>=</b> <span style='color:#b08000;'>1.0</span><b>*</b>np.array(data)
+    n <b>=</b> <b><span style='color:#f70349;'>len</span></b>(a)
+    m, se <b>=</b> np.mean(a), sp.stats.stderr(a)
+    h <b>=</b> se <b>*</b> sp.stats.t._ppf((<span style='color:#b08000;'>1</span><b>+</b>confidence)<b>/</b><span style='color:#b08000;'>2.</span>, n<b>-</b><span style='color:#b08000;'>1</span>)
+    <b>return</b> m<b>-</b>h, m, m<b>+</b>h
+<span style='color:#898887;'>#---------------------------------------------------------------------------</span>
+<b>def</b> mean_confidence_interval(data, confidence<b>=</b><span style='color:#b08000;'>0.95</span>):
+    a <b>=</b> <span style='color:#b08000;'>1.0</span><b>*</b>np.array(data)
+    n <b>=</b> <b><span style='color:#f70349;'>len</span></b>(a)
+    m, se <b>=</b> np.mean(a), sp.stats.sem(a)
+    h <b>=</b> se <b>*</b> sp.stats.t._ppf((<span style='color:#b08000;'>1</span><b>+</b>confidence)<b>/</b><span style='color:#b08000;'>2.</span>, n<b>-</b><span style='color:#b08000;'>1</span>)
+    <b>return</b> m<b>-</b>h, m, m<b>+</b>h
+<span style='color:#898887;'>#---------------------------------------------------------------------------</span>
+<b>def</b> funcProbOf(C, N):
+    a <b>=</b> N
+    b <b>=</b> <span style='color:#b08000;'>2</span><b>*</b>C<b>+</b>N<b>-</b><span style='color:#b08000;'>1</span>
+    c <b>=</b> C
+    f2 <b>=</b> (b <b>-</b> np.sqrt(math.<b><span style='color:#f70349;'>pow</span></b>(b,<span style='color:#b08000;'>2</span>)<b>-</b><span style='color:#b08000;'>4</span><b>*</b>a<b>*</b>c))<b>/</b>(<span style='color:#b08000;'>1.0</span><b>*</b><span style='color:#b08000;'>2</span><b>*</b>a)
+    <b>return</b> f2
+<span style='color:#898887;'>#--------------------------------------------------------------------------</span>
+<b>def</b> loss_p(p, n):
+    a <b>=</b> <span style='color:#b08000;'>1.0</span>
+    <b>for</b> i <b>in</b> <b><span style='color:#f70349;'>range</span></b>(n):
+        a <b>=</b> a<b>*</b>(<span style='color:#b08000;'>1</span><b>-</b>p)
+
+    <b>return</b> a
+<span style='color:#898887;'>#---------------------------------------------------------------------------</span>
+<span style='color:#898887;'>'''</span><span style='color:#898887;'>Create all nodes in the Network</span><span style='color:#898887;'>'''</span>
+<b>def</b> createNodes(n, channelLen, T_period):
+    lnodes<b>=</b>{}
+    <b>for</b> i <b>in</b> <b><span style='color:#f70349;'>range</span></b>(<span style='color:#b08000;'>1</span>, n<b>+</b><span style='color:#b08000;'>1</span>):
+        node <b>=</b> Node(i,n)
+        channel <b>=</b> i<b>%</b>channelLen
+        ownSlot <b>=</b> <span style='color:#b08000;'>1</span> <b>+</b> i<b>%</b>(T_period<b>-</b><span style='color:#b08000;'>1</span>)
+        node.addOwn(channel, ownSlot)
+                
+        lnodes[i]<b>=</b> node
+    <b>return</b> lnodes
+<span style='color:#898887;'>#---------------------------------------------------------------------------</span>
+<b>def</b> flushIds(Lnodes):
+    <b>for</b> i, node <b>in</b> <b><span style='color:#f70349;'>enumerate</span></b>(Lnodes.values()):
+       Lnodes[node.<b><span style='color:#f70349;'>id</span></b>].flushNeighbors()
+       <span style='color:#898887;'>#Lnodes[node.id].networkVec    = []    </span>
+       <span style='color:#898887;'>#Lnodes[node.id].notKnownNeigh = []</span>
+       <span style='color:#898887;'>#Lnodes[node.id].neighbors1Hop = []  </span>
+       
+       <span style='color:#898887;'>#Lnodes[node.id].networkVec.append(node)</span>
+<span style='color:#898887;'>#---------------------------------------------------------------------------</span>
+<b>def</b> printNeighbors(Lnodes):
+    <b>for</b> node <b>in</b> Lnodes.values():
+        <b><span style='color:#f70349;'>print</span></b> <span style='color:#bf0303;'>'NodeID:'</span>, node.<b><span style='color:#f70349;'>id</span></b>, <span style='color:#bf0303;'>'Neighbors: '</span>,
+        <span style='color:#898887;'>#for n in node.neighbors1Hop:</span>
+        <b>if</b> <span style='color:#b08000;'>1</span>:
+            <span style='color:#898887;'>#print n.id,</span>
+            <b><span style='color:#f70349;'>print</span></b> <b><span style='color:#f70349;'>len</span></b>(node.neighbors1Hop), <b><span style='color:#f70349;'>len</span></b>(node.neighbors), <b><span style='color:#f70349;'>len</span></b>(node.networkVec), node.Phase_i
+           
+    <span style='color:#898887;'>#print '\n'</span>
+<span style='color:#898887;'>#---------------------------------------------------------------------------</span>
+<span style='color:#898887;'>'''</span><span style='color:#898887;'>returns True if every node have discovered all its neighbors </span><span style='color:#898887;'>'''</span>
+<b>def</b> all2allComplete(Lnodes):
+    <b>for</b> node <b>in</b> Lnodes.values():
+        <b>if</b> node.allNetworkDiscovered() <b>==</b> <span style='color:#006e28;'>False</span>:
+            <b>return</b> <span style='color:#006e28;'>False</span>
+    <b>return</b> <span style='color:#006e28;'>True</span>
+<span style='color:#898887;'>#---------------------------------------------------------------------------</span>
+<b>def</b> allNeighborsDiscovered(Lnodes):
+    <b>for</b> node <b>in</b> Lnodes.values():
+        <b>if</b> <b><span style='color:#f70349;'>len</span></b>(node.neighbors1Hop) <b>!=</b> <b><span style='color:#f70349;'>len</span></b>(node.neighbors):
+            <b>return</b> <span style='color:#006e28;'>False</span>
+    <b>return</b> <span style='color:#006e28;'>True</span>
+<span style='color:#898887;'>#---------------------------------------------------------------------------    </span>
+<b>def</b> addTopology(Xmax, Ymax, Nodes):
+    lnodes<b>=</b>{}
+    xco <b>=</b> np.arange(<span style='color:#b08000;'>0</span>, Xmax<b>+</b><span style='color:#b08000;'>0.25</span>, <span style='color:#b08000;'>0.25</span>)
+    yco <b>=</b> np.arange(<span style='color:#b08000;'>0</span>, Ymax<b>+</b><span style='color:#b08000;'>0.25</span>, <span style='color:#b08000;'>0.25</span>)    
+    <span style='color:#898887;'>'''</span><span style='color:#898887;'>add coordinates</span><span style='color:#898887;'>'''</span>
+    <b>for</b> node <b>in</b> Nodes.values():
+        x <b>=</b> np.random.choice(xco)
+        y <b>=</b> np.random.choice(yco)
+        
+        Nodes[node.<b><span style='color:#f70349;'>id</span></b>].addCoordinates(x,y)
+        
+        <span style='color:#898887;'>#lnodes[node.id]=node</span>
+    <span style='color:#898887;'>'''</span><span style='color:#898887;'>add neighbors based on X and Y</span><span style='color:#898887;'>'''</span>
+    <b>for</b> nodei <b>in</b> lnodes.values():
+        <b>for</b> nodej <b>in</b> lnodes.values():
+            <b>if</b> nodei.<b><span style='color:#f70349;'>id</span></b> <b>!=</b> nodej.<b><span style='color:#f70349;'>id</span></b> <b>and</b> nodei.isNeighbor(nodej):
+                nodei.neighbors.append(nodej.<b><span style='color:#f70349;'>id</span></b>)
+    <span style='color:#898887;'>'''</span><span style='color:#898887;'>Print Coordinates</span><span style='color:#898887;'>'''</span>           
+    <b>for</b> node <b>in</b> lnodes.values():
+        <b><span style='color:#f70349;'>print</span></b> [node.<b><span style='color:#f70349;'>id</span></b>, node.xc0, node.yc0],<span style='color:#bf0303;'>'-&gt;'</span>,node.neighbors
+        
+        
+    <b>for</b> node <b>in</b> lnodes.values():
+        plt.plot(node.xc0, node.yc0, <span style='color:#bf0303;'>'ro'</span>, lw<b>=</b><span style='color:#b08000;'>3</span>)
+    
+    plt.grid(<span style='color:#006e28;'>True</span>)
+    plt.show()
+    
+    saveTopology(<span style='color:#bf0303;'>'./NodePositions2.dat'</span>, lnodes)
+            
+    <span style='color:#898887;'>#return lnodes</span>
+    
+<b>def</b> plot_cdf(a):
+    a.sort()
+    yvals<b>=</b>np.arange(<b><span style='color:#f70349;'>len</span></b>(a))<b>/</b><b><span style='color:#f70349;'>float</span></b>(<b><span style='color:#f70349;'>len</span></b>(a))
+    plt.plot(a, yvals )  
+    plt.show()
+    <span style='color:#898887;'>#plt.close()</span>
+    <b><span style='color:#f70349;'>print</span></b> <span style='color:#bf0303;'>'gonga....'</span>
+<span style='color:#898887;'>#---------------------------------------------------------------------------   </span>
+<span style='color:#898887;'>#---------------------------------------------------------------------------</span>
+<b>def</b> write_file(fname, a):
+    <b>with</b> <b><span style='color:#f70349;'>open</span></b>(fname,<span style='color:#bf0303;'>'w'</span>) <span style='color:#924c9d;'>as</span> fw:
+        <b>for</b> i, val <b>in</b> <b><span style='color:#f70349;'>enumerate</span></b>(a):
+            <b>if</b> i<b>+</b><span style='color:#b08000;'>1</span> <b>&lt;</b> <b><span style='color:#f70349;'>len</span></b>(a):
+                fw.write(<b><span style='color:#f70349;'>str</span></b>(val)<b>+</b><span style='color:#bf0303;'>','</span>)
+            <b>else</b>:
+                fw.write(<b><span style='color:#f70349;'>str</span></b>(val))
+<span style='color:#898887;'>#---------------------------------------------------------------------------</span>
+<b>def</b> read_file(fname):
+    <b>with</b> <b><span style='color:#f70349;'>open</span></b>(fname,<span style='color:#bf0303;'>'r'</span>) <span style='color:#924c9d;'>as</span> fr:    
+        dt <b>=</b> fr.read().split(<span style='color:#bf0303;'>','</span>)
+        xx <b>=</b>[<b><span style='color:#f70349;'>int</span></b>(x) <b>for</b> x <b>in</b> dt]
+        <b>return</b> xx    
+<span style='color:#898887;'>#--------------------------------------------------------------------------- </span>
+<b>def</b> saveTopology(fname, listNodes):
+    <b>with</b> <b><span style='color:#f70349;'>open</span></b>(fname, <span style='color:#bf0303;'>'w'</span>) <span style='color:#924c9d;'>as</span> fw:
+        <b>for</b> ii, node <b>in</b> <b><span style='color:#f70349;'>enumerate</span></b>(listNodes.values()):
+            <b>if</b> ii<b>+</b><span style='color:#b08000;'>1</span> <b>&lt;</b> <b><span style='color:#f70349;'>len</span></b>(listNodes):
+                fw.write(<b><span style='color:#f70349;'>str</span></b>(node.xc0)<b>+</b><span style='color:#bf0303;'>','</span>)
+                fw.write(<b><span style='color:#f70349;'>str</span></b>(node.yc0)<b>+</b><span style='color:#bf0303;'>':'</span>)
+            <b>else</b>:
+                fw.write(<b><span style='color:#f70349;'>str</span></b>(node.xc0)<b>+</b><span style='color:#bf0303;'>','</span>)
+                fw.write(<b><span style='color:#f70349;'>str</span></b>(node.yc0))                                          
+<span style='color:#898887;'>#---------------------------------------------------------------------------         </span>
+<b>def</b> readTopology(fname):
+    <b>with</b> <b><span style='color:#f70349;'>open</span></b>(fname,<span style='color:#bf0303;'>'r'</span>) <span style='color:#924c9d;'>as</span> fr:
+        dt <b>=</b> fr.read().split(<span style='color:#bf0303;'>':'</span>)
+        <span style='color:#898887;'>#print dt</span>
+        xx <b>=</b> [(<b><span style='color:#f70349;'>float</span></b>(x.split(<span style='color:#bf0303;'>','</span>)[<span style='color:#b08000;'>0</span>]),<b><span style='color:#f70349;'>float</span></b>(x.split(<span style='color:#bf0303;'>','</span>)[<span style='color:#b08000;'>1</span>])) <b>for</b> x <b>in</b> dt]
+        <span style='color:#898887;'>#for x, y in xx:            </span>
+            <span style='color:#898887;'>#plt.plot(x, y, 'ro', lw=8)</span>
+    
+        <span style='color:#898887;'>#plt.grid(True)</span>
+        <span style='color:#898887;'>#title('[100m x 100m]:::::::NETWORK TOPOLOGY::::::')</span>
+        <span style='color:#898887;'>#xlabel('X-$axis$')</span>
+        <span style='color:#898887;'>#ylabel('Y-$axis$')</span>
+        <span style='color:#898887;'>#plt.show()</span>
+        <b>return</b> xx
+<span style='color:#898887;'>#---------------------------------------------------------------------------                  </span>
+<b>def</b> nodesAddCoordinates(network, lnodes):
+    Lnodes<b>=</b>{}
+    <b>if</b> <b><span style='color:#f70349;'>len</span></b>(network) <b>&lt;</b> <b><span style='color:#f70349;'>len</span></b>(lnodes):
+        <b><span style='color:#f70349;'>print</span></b> <span style='color:#bf0303;'>'WARNING:::: COORDINATES VECTOR SMALLER THAN SIZE OF THE NETWORK'</span>
+        exit(<span style='color:#b08000;'>0</span>)
+    <b><span style='color:#f70349;'>print</span></b> <span style='color:#bf0303;'>'''</span><span style='color:#bf0303;'>==&gt;downloading network topology.....</span><span style='color:#bf0303;'>'''</span>
+    
+    
+    <span style='color:#898887;'>#plt.axes()</span>
+    
+    <b>for</b> node, coord <b>in</b> <b><span style='color:#f70349;'>zip</span></b>(lnodes.values(), network):
+            x, y <b>=</b> coord
+            lnodes[node.<b><span style='color:#f70349;'>id</span></b>].addCoordinates(x,y) 
+            Lnodes[node.<b><span style='color:#f70349;'>id</span></b>] <b>=</b> lnodes[node.<b><span style='color:#f70349;'>id</span></b>]
+    <span style='color:#898887;'>'''</span><span style='color:#898887;'>add neighbors based on X and Y</span><span style='color:#898887;'>'''</span>
+    <b><span style='color:#f70349;'>print</span></b> <span style='color:#bf0303;'>'==&gt;computing neighborhood...'</span>
+    <b>for</b> nodei <b>in</b> Lnodes.values():
+        
+        <b>for</b> nodej <b>in</b> lnodes.values():
+            <b>if</b> nodei.<b><span style='color:#f70349;'>id</span></b> <b>!=</b> nodej.<b><span style='color:#f70349;'>id</span></b> <b>and</b> nodei.isNeighbor(nodej):
+                <span style='color:#898887;'>#nodei.neighbors.append(nodej)</span>
+                Lnodes[nodei.<b><span style='color:#f70349;'>id</span></b>].neighbors.append(nodej)
+        
+        <span style='color:#898887;'>'''</span><span style='color:#898887;'>PLOT NODE LOCATION</span><span style='color:#898887;'>'''</span>
+        x, y <b>=</b> nodei.xc0, nodei.yc0
+        
+        <span style='color:#898887;'>#circxy = plt.Circle((x, y), radius = 2, fc='r')#,</span>
+
+        <span style='color:#898887;'>#plt.gca().add_patch(circxy)</span>
+        
+        <span style='color:#898887;'>#plt.text(x-0.5*2, y-0.5*2, str(nodei.id), fontsize=10, color='k')</span>
+        
+        <span style='color:#898887;'>'''</span><span style='color:#898887;'>PLOT LINKS</span><span style='color:#898887;'>'''</span>
+        <b>for</b> neighNode <b>in</b> nodei.neighbors:
+            x <b>=</b> (nodei.xc0, neighNode.xc0)
+            y <b>=</b> (nodei.yc0, neighNode.yc0)
+            <span style='color:#898887;'>#plot(x,y, color='b', linestyle='-', linewidth=0.2)</span>
+    
+
+    
+    <span style='color:#898887;'>#xlim([0,100])</span>
+    <span style='color:#898887;'>#ylim([0,100])</span>
+    
+
+    
+    <span style='color:#898887;'>#plt.grid(True)</span>
+    <span style='color:#898887;'>#title('[100m x 100m]::::::RANDOM NETWORK TOPOLOGY::::::')</span>
+    <span style='color:#898887;'>#xlabel('X-$axis$ (m)')</span>
+    <span style='color:#898887;'>#ylabel('Y-$axis$ (m)')            </span>
+    <span style='color:#898887;'>#plt.show()</span>
+        <span style='color:#898887;'>#print [nodei.id, nodei.xc0, nodei.yc0],'-&gt;',nodei.neighbors</span>
+    <b>return</b> Lnodes
+
+<span style='color:#898887;'>#--------------------------------------------------------------------------- </span>
+<b>def</b> networkUpdate(lnodes):
+    plt.clf()
+    
+    plt.axes()        
+        
+    <span style='color:#898887;'>'''</span><span style='color:#898887;'>PLOT NODE LOCATION</span><span style='color:#898887;'>'''</span>
+    <b>for</b> nodei <b>in</b> lnodes.values():
+        x, y <b>=</b> nodei.xc0, nodei.yc0
+        <span style='color:#898887;'>#mpl.patches.Circle(x,y, radius=3, color='red')</span>
+        circxy <b>=</b> plt.Circle((x, y), radius <b>=</b> <span style='color:#b08000;'>2</span>, fc<b>=</b><span style='color:#bf0303;'>'k'</span>)<span style='color:#898887;'>#,</span>
+        plt.gca().add_patch(circxy)
+        plt.text(x<b>-</b><span style='color:#b08000;'>0.5</span><b>*</b><span style='color:#b08000;'>2</span>, y<b>-</b><span style='color:#b08000;'>0.5</span><b>*</b><span style='color:#b08000;'>2</span>, <b><span style='color:#f70349;'>str</span></b>(nodei.<b><span style='color:#f70349;'>id</span></b>), fontsize<b>=</b><span style='color:#b08000;'>10</span>, color<b>=</b><span style='color:#bf0303;'>'white'</span>)
+        
+        <span style='color:#898887;'>'''</span><span style='color:#898887;'>PLOT LINKS</span><span style='color:#898887;'>'''</span>
+        <b>for</b> neighNode <b>in</b> nodei.neighbors1Hop:
+            
+            x <b>=</b> (nodei.xc0, neighNode.xc0)
+            y <b>=</b> (nodei.yc0, neighNode.yc0)
+            plot(x,y, color<b>=</b><span style='color:#bf0303;'>'b'</span>, linestyle<b>=</b><span style='color:#bf0303;'>'-'</span>, linewidth<b>=</b><span style='color:#b08000;'>0.2</span>)
+    
+    <span style='color:#898887;'>'''</span><span style='color:#898887;'>RESTORE GRID AND AXIS NAMES</span><span style='color:#898887;'>'''</span>
+    xlim([<span style='color:#b08000;'>0</span>,<span style='color:#b08000;'>100</span>])
+    ylim([<span style='color:#b08000;'>0</span>,<span style='color:#b08000;'>100</span>])
+    
+    plt.grid(<span style='color:#006e28;'>True</span>)
+    title(<span style='color:#bf0303;'>'[100m x 100m]:::::: [Snapshot] NETWORK TOPOLOGY::::::'</span>)
+    xlabel(<span style='color:#bf0303;'>'X-$axis$ (m)'</span>)
+    ylabel(<span style='color:#bf0303;'>'Y-$axis$ (m)'</span>)            
+    plt.show()            
+<span style='color:#898887;'>#---------------------------------------------------------------------------            </span>
+<b>def</b> runSim():
+  
+  <b>global</b> csvFd, CSize, KSize  
+  
+  <b>global</b> maxHopCount, T_period
+  
+  T_period <b>=</b> <span style='color:#b08000;'>3</span>
+  snapShotCounter <b>=</b> <span style='color:#b08000;'>0</span>
+  
+  superFrames<b>=</b>[<span style='color:#b08000;'>2</span>,<span style='color:#b08000;'>3</span>,<span style='color:#b08000;'>4</span>,<span style='color:#b08000;'>5</span>,<span style='color:#b08000;'>6</span>,<span style='color:#b08000;'>10</span>]
+  ptOwn    <b>=</b> <span style='color:#b08000;'>0.50</span>
+  
+  numRepeat   <b>=</b> <span style='color:#b08000;'>100</span>
+  <span style='color:#898887;'>#nodes = [2, 4]+range(5, 51,5)</span>
+  channels<b>=</b>[<span style='color:#b08000;'>2</span>,<span style='color:#b08000;'>4</span>,<span style='color:#b08000;'>8</span>,<span style='color:#b08000;'>10</span>,<span style='color:#b08000;'>12</span>,<span style='color:#b08000;'>14</span>,<span style='color:#b08000;'>16</span>]  
+  
+  nodes <b>=</b> [<span style='color:#b08000;'>100</span>]<span style='color:#898887;'>#range(60, 101,10)</span>
+  channels<b>=</b>[<span style='color:#b08000;'>2</span>,<span style='color:#b08000;'>3</span>,<span style='color:#b08000;'>4</span>,<span style='color:#b08000;'>5</span>]<span style='color:#898887;'>#[4,8]</span>
+  
+  
+  networkCoord<b>=</b>readTopology(<span style='color:#bf0303;'>'./NodePositions.dat'</span>)
+  
+  <span style='color:#898887;'>#print networkCoord</span>
+  
+  <span style='color:#898887;'>#exit()</span>
+  
+  phase_count <b>=</b> <span style='color:#b08000;'>1</span>
+  phase_len   <b>=</b> <span style='color:#b08000;'>4</span><b>*</b>phase_count<b>*</b><span style='color:#b08000;'>2</span><b>**</b>phase_count
+  
+  <b>for</b> frameLen <b>in</b> [<span style='color:#b08000;'>3</span>]: <span style='color:#898887;'>#superFrames:</span>
+      T_period <b>=</b> frameLen
+      
+      <b><span style='color:#f70349;'>print</span></b> <span style='color:#bf0303;'>'----------------------------------------------'</span>
+      
+      <b>for</b> num_nodes <b>in</b> nodes: 
+          <b>for</b> channel <b>in</b> channels:
+              <span style='color:#898887;'>#pt = funcProbOf(channel, num_nodes)</span>
+              pt <b>=</b> funcProbOf(channel, <span style='color:#b08000;'>10</span>)
+    
+              vec_times <b>=</b> []
+              <span style='color:#898887;'>##t_slot = 1</span>
+              <b><span style='color:#f70349;'>print</span></b> <span style='color:#bf0303;'>'==&gt; [T='</span>,frameLen,<span style='color:#bf0303;'>' N='</span>,num_nodes,<span style='color:#bf0303;'>' K='</span>,channel,<span style='color:#bf0303;'>']'</span>
+              
+              Lnodes <b>=</b> createNodes(num_nodes, channel, T_period)
+              
+              <span style='color:#898887;'>'''</span><span style='color:#898887;'>Add topology</span><span style='color:#898887;'>'''</span>
+              <span style='color:#898887;'>#addTopology(100, 100, Lnodes)</span>
+              <span style='color:#898887;'>#return</span>
+              
+              <span style='color:#898887;'>'''</span><span style='color:#898887;'>Add Coordinates to nodes..</span><span style='color:#898887;'>'''</span>
+              Lnodes <b>=</b> nodesAddCoordinates(networkCoord, Lnodes)
+              
+              
+              <span style='color:#898887;'>#return</span>
+              
+              <b>for</b> t  <b>in</b> <b><span style='color:#f70349;'>range</span></b>(numRepeat):
+                  <span style='color:#898887;'>#A=np.eye(n)</span>
+                  t_slot <b>=</b> <span style='color:#b08000;'>0</span>
+                  
+                  <span style='color:#898887;'>'''</span><span style='color:#898887;'>clear neighbors list</span><span style='color:#898887;'>'''</span>
+                  flushIds(Lnodes)
+                  
+                  
+                  <span style='color:#898887;'>#while all2allComplete(Lnodes) == False:</span>
+                  <b>while</b> allNeighborsDiscovered(Lnodes) <b>==</b> <span style='color:#006e28;'>False</span>:
+                        t_slot <b>=</b> t_slot <b>+</b> <span style='color:#b08000;'>1</span> 
+                                   
+                        <b>if</b> t_slot<b>%</b><span style='color:#b08000;'>100</span> <b>==</b> <span style='color:#b08000;'>0</span>:
+                           <b><span style='color:#f70349;'>print</span></b> <span style='color:#bf0303;'>'[round: '</span>, t , t_slot,<span style='color:#bf0303;'>']'</span>  
+                           <span style='color:#898887;'>#networkUpdate(Lnodes)</span>
+                           
+                           <b>if</b> t_slot<b>%</b><span style='color:#b08000;'>100</span> <b>==</b> <span style='color:#b08000;'>0</span>:
+                               <span style='color:#898887;'>'''</span><span style='color:#898887;'>'''</span>
+                               <span style='color:#898887;'>#printNeighbors(Lnodes)</span>
+                          
+                        <span style='color:#898887;'>'''</span><span style='color:#898887;'>THIS IS BEACONING SLOT</span><span style='color:#898887;'>'''</span>                     
+                        <span style='color:#898887;'>#'''THIS IS A DIFFERENT SLOT-NON BEACON'''</span>
+                        <b>for</b> jj, node <b>in</b> <b><span style='color:#f70349;'>enumerate</span></b>(Lnodes.values()):
+                            
+                            <span style='color:#898887;'>'''</span><span style='color:#898887;'>Make sure we update the new Tx Probability</span><span style='color:#898887;'>'''</span>
+                            Lnodes[node.<b><span style='color:#f70349;'>id</span></b>].updateParameters(t_slot)
+                            
+                            <span style='color:#898887;'>#randChannel = rsObj.choice(range(channel))</span>
+                            <span style='color:#898887;'>#Lnodes[node.id].setReceiver(randChannel)</span>
+                            <span style='color:#898887;'>#if node.selectOwn(1.0):</span>
+
+                            <b>if</b> node.selectOwn(ptOwn):
+                                <span style='color:#898887;'>'''</span><span style='color:#898887;'>it is my slot.. transmit with probability: pOwn</span><span style='color:#898887;'>'''</span>
+                                <span style='color:#898887;'>#Lnodes[node.id].transmitOwn(pt)</span>
+                                Lnodes[node.<b><span style='color:#f70349;'>id</span></b>].transmitAdapt()
+                                <span style='color:#898887;'>'''</span><span style='color:#898887;'>@note HERE MAYBE try to CHECK status here to determine if we...</span><span style='color:#898887;'>'''</span>
+                            <b>else</b>:
+                                <span style='color:#898887;'>'''</span><span style='color:#898887;'>first I select one channel of not heard nodes yet</span><span style='color:#898887;'>'''</span>
+                                vCh<b>=</b>[chRand <b>for</b> chRand <b>in</b> <b><span style='color:#f70349;'>range</span></b>(channel) <b>if</b> chRand <b>!=</b> node.ownChannel]                                    
+                                <b>if</b> <b><span style='color:#f70349;'>len</span></b>(vCh):
+                                    <span style='color:#898887;'>'''</span><span style='color:#898887;'>choose channel UNIFORMLY based on the not YET heard nodes</span><span style='color:#898887;'>'''</span>
+                                    randChannel<b>=</b>rsObj.choice(vCh)
+                                    <span style='color:#898887;'>#randChannel = Lnodes[rsObj.choice(vCh)].chId</span>
+                                    Lnodes[node.<b><span style='color:#f70349;'>id</span></b>].setReceiver(randChannel)
+                                <b>else</b>:
+                                    <span style='color:#898887;'>'''</span><span style='color:#898887;'>OTHERWISE choose any random channel COLUMN</span><span style='color:#898887;'>'''</span>
+                                    randChannel <b>=</b> rsObj.choice(<b><span style='color:#f70349;'>range</span></b>(channel))
+                                    Lnodes[node.<b><span style='color:#f70349;'>id</span></b>].setReceiver(randChannel)
+                        <span style='color:#898887;'>'''</span><span style='color:#898887;'>Now select who succeeded</span><span style='color:#898887;'>'''</span>
+                        <b>for</b> kk, node <b>in</b> <b><span style='color:#f70349;'>enumerate</span></b>(Lnodes.values()):
+                            <span style='color:#898887;'>'''</span><span style='color:#898887;'>....I am a receiver....</span><span style='color:#898887;'>'''</span>
+                            <b>if</b> node.state <b>==</b> <span style='color:#006e28;'>False</span>:
+                                txList<b>=</b>[]
+                                <span style='color:#898887;'>'''</span><span style='color:#898887;'>check for transmitters</span><span style='color:#898887;'>'''</span>
+                                <b>for</b> nodeTx <b>in</b> Lnodes.values():
+                                    <span style='color:#898887;'>'''</span><span style='color:#898887;'>Not Myself, and Transmitter is on the same channel I am..</span><span style='color:#898887;'>'''</span>
+                                    <b>if</b> nodeTx.state <b>and</b> node.isNeighbor(nodeTx) <b>and</b> node.chId <b>==</b> nodeTx.chId:
+                                        <span style='color:#898887;'>'''</span><span style='color:#898887;'>This is a transmitter</span><span style='color:#898887;'>'''</span>
+                                        txList.append(nodeTx)
+                                <b>if</b> <b><span style='color:#f70349;'>len</span></b>(txList) <b>==</b> <span style='color:#b08000;'>1</span>:
+                                    <span style='color:#898887;'>'''</span><span style='color:#898887;'>ONE NODE TRANSMITTED..SUCCESS</span><span style='color:#898887;'>'''</span>                                        
+                                    Lnodes[node.<b><span style='color:#f70349;'>id</span></b>].disseminate(txList[<span style='color:#b08000;'>0</span>]) 
+                  <span style='color:#898887;'>#end While</span>
+                  vec_times.append(t_slot)
+              <span style='color:#898887;'>#end for</span>
+              <span style='color:#898887;'>'''</span><span style='color:#898887;'>PLOT CDF...</span><span style='color:#898887;'>'''</span>
+              <span style='color:#898887;'>#plot_cdf(vec_times)   </span>
+              
+              vec_times.sort()
+              <b><span style='color:#f70349;'>print</span></b> vec_times
+              
+              dfname<b>=</b><span style='color:#bf0303;'>'./data/AdptV1'</span><b>+</b><span style='color:#bf0303;'>'K'</span><b>+</b><b><span style='color:#f70349;'>str</span></b>(channel)<b>+</b><span style='color:#bf0303;'>'.csv'</span>
+              
+              write_file(dfname, vec_times)              
+            
+              discTime <b>=</b> mean(vec_times)<span style='color:#898887;'>#/(1-0.2)</span>
+              
+              <b><span style='color:#f70349;'>print</span></b> <span style='color:#bf0303;'>'Mean for'</span>,<span style='color:#bf0303;'>' [T='</span>, T_period,<span style='color:#bf0303;'>'N ='</span>, num_nodes, <span style='color:#bf0303;'>'K='</span>,channel, <b><span style='color:#f70349;'>round</span></b>(pt, <span style='color:#b08000;'>3</span>), <span style='color:#bf0303;'>'-&gt;'</span>, <b><span style='color:#f70349;'>round</span></b>(discTime, <span style='color:#b08000;'>2</span>),<span style='color:#bf0303;'>']'</span>                                    
+      <span style='color:#898887;'>#end for</span>
+  <span style='color:#898887;'>###</span>
+  <span style='color:#898887;'>'''</span><span style='color:#898887;'>comment</span><span style='color:#898887;'>'''</span>
+  <span style='color:#898887;'>## </span>
+<span style='color:#898887;'>#---------------------------------------------------------------------------</span>
+<span style='color:#898887;'>'''</span><span style='color:#898887;'>======================================================================</span><span style='color:#898887;'>'''</span>
+<b>if</b> <span style='color:#006e28;'>__name__</span> <b>==</b> <span style='color:#bf0303;'>'__main__'</span>:
+    
+    runSim()      
+    
+ 
+<span style='color:#898887;'>'''</span><span style='color:#898887;'>======================================================================</span><span style='color:#898887;'>'''</span>
+</pre>
+</body>
+</html>
